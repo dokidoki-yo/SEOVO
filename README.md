@@ -51,7 +51,7 @@ The testing folder are supposed to be organized as:
 * a "poses.txt" file containing **global** poses for each keyframe
 
 ## Reconstruction
-Since we have obtained the poses and the depths, we can synthesize the corresponding point cloud using the codes provided in the ch12 of [slambook](https://github.com/gaoxiang12/slambook2) which are based on **++**.
+Since we have obtained the poses and the depths, we can synthesize the corresponding point cloud using the codes provided in the ch12 of [slambook](https://github.com/gaoxiang12/slambook2) which are based on **C++**.
 
 ## Software Environment (the installation tutorials are also provide in the slambook)
 * Opencv
