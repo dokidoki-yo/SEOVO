@@ -11,12 +11,11 @@ from skimage.transform import resize as imresize
 from skimage.measure import label, regionprops
 from path import Path
 from datasets.sequence_folders_test import SequenceFolderTest
-from test1.loss_functions_test2 import compute_photo_and_geometry_loss, compute_smooth_loss
+from test1.loss_functions_test2 import compute_photo_and_geometry_loss, compute_smooth_loss, compute_errors
 from test1.inverse_warp_test1 import pose_vec2mat
 from imageio import imsave
 from flow.ransac import reduced_ransac
 from models import DispResNet, PoseResNet
-# from segment.demo_modify import run as seg
 from segment.demo_modify import run as seg, line_detect
 from utils import tensor2array
 from scipy.spatial.transform import Rotation as R
@@ -25,139 +24,33 @@ matplotlib.use('TkAgg')
 
 filter = reduced_ransac(check_num=6000, thres=0.2, dataset='nyu')
 show_flag = False
-# initial_norm = None
 
 parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-# parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
-# parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
-# parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
-# parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-# parser.add_argument('--epoch-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
-# parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
 parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum for sgd, alpha parameter for adam')
 parser.add_argument('--beta', default=0.999, type=float, metavar='M', help='beta parameters for adam')
 parser.add_argument('--weight-decay', '--wd', default=0, type=float, metavar='W', help='weight decay')
-# parser.add_argument('--range', default=[1.1, 1.2], type=float, nargs='+', help='path to pre-trained Flow net model')
-# parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='print frequency')
-# parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
-# parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH', help='csv where to save per-epoch train and valid stats')
-# parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH', help='csv where to save per-gradient descent train stats')
-# parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs at validation step')
-# parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], help='number of ResNet layers for depth estimation.')
-# parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
-# parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
-# parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
-# parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
-# parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
-# parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
-# parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the mask for stationary points')
-# parser.add_argument('--with-pretrain', type=int,  default=1, help='with or without imagenet pretrain for resnet')
-# parser.add_argument('--dataset', type=str, choices=['kitti', 'nyu'], default='kitti', help='the dataset to train')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--pretrained-flow', dest='pretrained_flow', default=None, metavar='PATH', help='path to pre-trained Flow net model')
 parser.add_argument('--input-folder', dest='input_folder', default=None, metavar='PATH', help='path to the input images')
 parser.add_argument('--intrinsics', dest='intrinsics_txt', default=None, metavar='PATH', help='path to the txt file of the camera intrinsics')
-# parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
-# parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
-#                     help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
-#                          ' zeros will null gradients outside target image.'
-#                          ' border will only null gradients of the coordinate outside (x or y)')
-# parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
-#                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 
 device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
 
 def load_tensor_image(filename):
     print('filename',filename)
-    # img = imread(filename).astype(np.float32)
     if filename.split('/')[-3] == 'depth' or filename.split('/')[-2] == 'depth':
         img = cv2.imread(filename,-1).astype(np.int16)
-        # print(img)
-        # stop
-        # print(np.min(img))
-        # print(np.max(img))
-        # cv2.imshow('img_ori', img)
-        # cv2.waitKey(0)
-
-
-        # img = cv2.normalize(img, None,0,255, cv2.NORM_MINMAX)
-        # img = np.expand_dims(img, axis= 2)
-        # print(img)
-        # stop
-
-        # img = cv2.resize(img, (320, 256)).astype(np.float32)
-        # img = cv2.resize(img, (320, 256)).astype(np.int16)
-        # print(img)
-        # stop
         img = cv2.resize(img, (320, 256), interpolation=cv2.INTER_NEAREST).astype(np.int16)
-        # cv2.imshow('img_resize', img)
-        # cv2.waitKey(0)
-        # # print(np.min(img))
-        # stop
-
         tensor_img = torch.from_numpy(img).to(device)
-        # print(tensor_img)
-        # stop
-
     else:
         img = cv2.imread(filename).astype(np.float32)
         h, w, _ = img.shape
-        # if (not args.no_resize) and (h != args.img_height or w != args.img_width):
         img = imresize(img, (256, 320)).astype(np.float32)
-        # img = cv2.resize(img, (320, 256)).astype(np.float32)
-
         img = np.transpose(img, (2, 0, 1))
         tensor_img = ((torch.from_numpy(img).unsqueeze(0) / 255 - 0.45) / 0.225).to(device)
-        # tensor_img = (torch.from_numpy(img).unsqueeze(0)).to(device)
-    # print(img.shape)
-    # for row in range(480):
-    #     for col in range(640):
-    #         gray_value = 0.299 * img[row, col, 0] + 0.587 * img[row, col, 1] + 0.114 * img[row, col, 2]
-    #         if gray_value > (0.4 * 255):
-    #             img[row, col, 0] = 255.
-    #             img[row, col, 1] = 255.
-    #             img[row, col, 2] = 255.
-    # white_mask = img > (0.4 * 255)
-    # print((white_mask*255).astype(np.uint8))
-    # cv2.imshow("tophat", img)
-    # cv2.waitKey(0)
-
-
-    # # Getting the kernel to be used in Top-Hat
-    # filterSize = (90, 90)
-    # kernel = cv2.getStructuringElement(cv2.MORPH_RECT,
-    #                                    filterSize)
-    #
-    # # Reading the image named 'input.jpg'
-    # # input_image = cv2.imread("testing.jpg")
-    # input_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    #
-    # # Applying the Top-Hat operation
-    # # tophat_img = cv2.morphologyEx(input_image,
-    # #                               cv2.MORPH_TOPHAT,
-    # #                               kernel)
-    # tophat_img = cv2.morphologyEx(input_image,
-    #                               cv2.MORPH_BLACKHAT,
-    #                               kernel)
-    # input_image_mask = tophat_img < 10
-    # # tophat_img = tophat_img.bool() * input_image_mask
-    #
-    # # 图片二值化
-    #
-    # cv2.imshow("original", input_image)
-    # # cv2.imshow("tophat", tophat_img)
-    # cv2.imshow("tophat", (input_image_mask*255).astype(np.uint8))
-    # cv2.waitKey(0)
-
-
-    # dst = cv2.pyrMeanShiftFiltering(img, 50, 50, None, 2)
-    # cv2.imshow('img', dst)
-    # cv2.waitKey(0)
-
-
     return tensor_img
 
 def meshgrid(h, w):
@@ -168,96 +61,32 @@ def meshgrid(h, w):
 
 def rt_from_fundamental_mat_nyu(fmat, K, depth_match):
     # F: [b, 3, 3] K: [b, 3, 3] depth_match: [b ,4, n]
-    # verify_match = self.rand_sample(depth_match, 5000) # [b,4,100]
     verify_match = depth_match.transpose(1, 2).cpu().detach().numpy()
-    # K_inv = torch.inverse(K)
     b = fmat.shape[0]
-
-    # print(K.shape)
-    # print('F',fmat)
-    # print(K)
-    # print(fmat)
     fmat_ = K.transpose(1, 2).bmm(fmat)
-
-    # stop
     essential_mat = fmat_.bmm(K)  # E = K^T * F *K
-    # print('K',K)
     iden = torch.cat([torch.eye(3), torch.zeros([3, 1])], -1).unsqueeze(0).repeat(b, 1, 1).to(
         device)  # [b,3,4]
     P1_K = K.bmm(iden)  # P1 with identity rotation and zero translation
     flags = []
     number_inliers = []
     P2 = []
-    # P2_ = []
-    # print('E', essential_mat[0])
+
     for i in range(b):
         cnum, R, t, _ = cv2.recoverPose(essential_mat[i].cpu().detach().numpy().astype('float64'),
                                         verify_match[i, :, :2].astype('float64'), \
                                         verify_match[i, :, 2:].astype('float64'),
                                         cameraMatrix=K[i, :, :].cpu().detach().numpy().astype('float64'))
-        # U,S,VT = np.linalg.svd(essential_mat[i].cpu().detach().numpy().astype('float64'))
-        # # print(R.shape)
-        # # print(t.shape)
-        # W = np.array([[0,-1,0],
-        #               [1,0,0],
-        #               [0,0,1]])
-        # WT = np.array([[0,1,0],
-        #               [-1,0,0],
-        #               [0,0,1]])
-        # # print(WT.shape)
-        # # print('E',)
-        # # print('U',U)
-        # # print('V',VT)
-        # # print(W*VT)
-        # R1 = np.matmul(U,np.matmul(W,VT))
-        # R2 = np.matmul(U,np.matmul(WT,VT))
-        # t1 = U[:,2]
-        # t2 = -U[:,2]
-        # print(t1,t2)
-        # print(R1.shape)
-        # if t1[0]<0 and np.abs(t1[0])>0.5:
-        #     t = t2
-        # else:
-        #     t = t1
-        # t1 = torch.from_numpy(t1).unsqueeze(1)
-        # t2 = torch.from_numpy(t2).unsqueeze(1)
-        # print(np.array([[t2[0]],[t2[1]],t2[2]]).shape)
-        # stop
-
-        # cnum, R, t, _ = cv2.recoverPose(essential_mat[i].cpu().detach().numpy().astype('float64'),
-        #                                 verify_match[i, :, 2:].astype('float64'),
-        #                                 verify_match[i, :, :2].astype('float64'),
-        #                                 cameraMatrix=K[i, :, :].cpu().detach().numpy().astype('float64'))
         p2 = torch.from_numpy(np.concatenate([R, t], axis=-1)).float().to(device)
         P2.append(p2)
-        # p2_l = torch.from_numpy(np.concatenate([R1, t1], axis=-1)).float().to(device)
-        # p2_r = torch.from_numpy(np.concatenate([R1, t2], axis=-1)).float().to(device)
-        # p2_b = torch.from_numpy(np.concatenate([R2, t1], axis=-1)).float().to(device)
-        # p2_t = torch.from_numpy(np.concatenate([R2, t2], axis=-1)).float().to(device)
-
-        # P2.append(p2_l)
-        # P2.append(p2_r)
-        # P2.append(p2_b)
-        # P2.append(p2_t)
         if cnum > depth_match.shape[-1] / 7.0:
             flags.append(1)
         else:
             flags.append(0)
         number_inliers.append(cnum)
-        # print(i,'E',essential_mat[i])
-        # print(i,'match', verify_match[i, :, :2],verify_match[i, :, 2:])
-        # if i == 0:
-        #     print('P before K',torch.stack(P2, axis=0))
-    # print(torch.stack(P2, axis=0).shape)
-    # P2_K = K.bmm(torch.stack(P2, axis=0))
-    # P2_K = K.repeat(4,1,1).bmm(torch.stack(P2, axis=0))
     P2 = torch.stack(P2, axis=0)
-    # print('F',P2)
-    # pdb.set_trace()
-
     return P2
 
-import mxnet as mx
 def depth2normal(depth):
     w, h =depth.shape
     dx = -(depth[2:h,1:h-1]-depth[0:h-2,1:h-1])*0.5
@@ -341,23 +170,11 @@ def main():
         normalize
     ])
     gt_depths = []
-    # poses_gt_write = []
-    # poses_gt = []
-    # poses_pool = []
-    # pose_ini = np.genfromtxt('/home/dokidoki/Datasets/7-Scenes/processing/head/poses/seq01/000001.txt').astype(
-    #     np.float32).reshape(
-    #     (4, 4))
-    # poses_pool.append(pose_ini)
 
-    # for iter in tqdm(range(n - 1)):
-    # for iter in range(1100):
-    # skip_frame = 0
-    # for iter in range(n-1):
     for iter in range(200):
         # read next image
         tensor_img2_name = test_files[iter+1]
         tensor_img2 = load_tensor_image(test_files[iter+1])
-        # skip_frame+=1
 
         # get the flow between the two frames through flownet
         imgs = torch.cat([tensor_img1, tensor_img2], dim=2)
@@ -375,50 +192,9 @@ def main():
             # add the keyframe image and its gt_depth(just for evaluation) in the corresponding pools
             keyframe_pool.append(tensor_img2_name)
             img_name = tensor_img2_name.split('/')[-1]
-            # pose_curr = np.genfromtxt(
-            #     '/home/dokidoki/Datasets/7-Scenes/processing/head/poses/seq01/000001.txt').astype(
-            #     np.float64).reshape(
-            #     (4, 4))
-            # pose_curr[:3, :3] = R.from_matrix(pose_curr[:3, :3]).as_matrix()
-            # pose_curr = np.genfromtxt(
-            #     '/home/dokidoki/Datasets/7-Scenes/processing/chess/poses/seq03/000001.txt').astype(
-            #     np.float64).reshape(
-            #     (4, 4))
-            # q = Quaternion(matrix=pose_curr[:3,:3])
-            # print(q)
-            # pose_curr = np.genfromtxt(
-            #     '/home/dokidoki/Datasets/7-Scenes/processing/test/08.txt').astype(
-            #     np.float32)[0].reshape(
-            #     (3, 4))
-            # print(np.linalg.det(pose_curr[:3,:3]))
-            # print('pose_curr', K_ms_inv_numpy.shape)
-            # pose_k_inv = K_ms_inv_numpy@pose_curr[:3, :]
-            # print('pose_k_inv', pose_k_inv)
-            # poses_pool.append(pose_curr)
-            # print('pose_ini', pose_ini)
-            # print('pose_curr', pose_curr)
-            # stop
-            # poses_gt_write.append(pose_curr[:3,:].reshape((1,12)))
-            # print('/home/dokidoki/Datasets/7-Scenes/processing/depth/'+last_name)
-            # gt_depth = load_tensor_image('/home/dokidoki/Datasets/7-Scenes/processing/stairs/depth/seq01/'+last_name)
-            # gt_depth = load_tensor_image('/home/dokidoki/Datasets/data_1008/318_v1_1008/depth/'+last_name)
-            # gt_depth = load_tensor_image('/home/dokidoki/Datasets/data_1008/zoulang_v1_1008/depth/'+last_name)
             gt_depth = load_tensor_image(args.input_folder + 'depth/' + img_name)
             gt_depth[gt_depth ==0] = 5000
-
-            # gt_depth_show = tensor2array(gt_depth, max_value=None, colormap='magma')
-            #
-            # gt_depth_show = np.transpose(gt_depth_show, (1, 2, 0))
-            # # gt_depth_show = cv2.cvtColor(gt_depth_show, cv2.COLOR_BGR2RGB)
-            # # cv2.imshow('gt', gt_depth_show)
-            # # cv2.waitKey(0)
-            # imsave(
-            #     '/home/dokidoki/Unsupervised_SfM/Unsupervised_VO/SC/SC-SfMLearner/gt_depth/' + last_name,
-            #     # np.transpose(tgt_img[0].cpu().detach().numpy(), (1, 2, 0)))
-            #     gt_depth_show)
-
             gt_depths.append(gt_depth)
-
 
             # get the pixel correspondence by the flow
 
@@ -450,83 +226,16 @@ def main():
 
             boundary_mask = (fwd_corres[:, 0, :, :] > 10) * (fwd_corres[:, 0, :, :] < 310) * (
                         fwd_corres[:, 1, :, :] > 10) * (fwd_corres[:, 1, :, :] < 250)
-            # boundary_mask = torch.ones_like(boundary_mask) * boundary_mask.int()
 
             boundary_mask_inv = (bwd_corres[:, 0, :, :] > 10) * (bwd_corres[:, 0, :, :] < 310) * (
                     bwd_corres[:, 1, :, :] > 10) * (bwd_corres[:, 1, :, :] < 250)
-            # boundary_mask_inv = torch.ones_like(boundary_mask_inv) * boundary_mask_inv.int()
 
-            # seg_maps.append(np.ones([81920]))
-
-            #
-            # tgt_depth = 1. / depth_net(tensor_img1)[0]
-            # tgt_depth_inv = 1. / depth_net(tensor_img2)[0]
-            #
-            # mask_depth = (tgt_depth > (torch.mean(tgt_depth) + 3.5 * torch.var(tgt_depth))).int()
-
-            # initial the plane mask with low grayscale
-            # img1_gray = 0.299 * tensor_img1[:, 0, :, :] + 0.587 * tensor_img1[:, 1, :, :] + 0.114 * tensor_img1[:, 2, :, :]
-            # img2_gray = 0.299 * tensor_img2[:, 0, :, :] + 0.587 * tensor_img2[:, 1, :, :] + 0.114 * tensor_img2[:, 2, :,
-            #                                                                                         :]
-            # img1_back_mask = img1_gray > 0.4
-
-            # mask_depth = img1_back_mask.unsqueeze(1)
-
-            # if torch.sum(mask_depth) > 10000:  # if the plane is large
-            #     mask_gc = mask_depth
-            # else:
-            #     mask_gc = 1-boundary_mask.int().unsqueeze(0)
-            # plane_masks.append(mask_gc)
-
-            # mask_depth_inv = (tgt_depth_inv > (torch.mean(tgt_depth_inv) + 7. * torch.var(tgt_depth_inv))).int()
-            # img2_back_mask = img2_gray > 0.35
-            # mask_depth_inv = img2_back_mask.unsqueeze(1)
-            #
-            # if torch.sum(mask_depth_inv) > 10000:
-            #     mask_gc_inv = mask_depth_inv
-            # else:
-            #     mask_gc_inv = 1-boundary_mask_inv.int()
-
-            # calculate the pose according to the flow, the mask is just the boundary mask
-            # F_final_1, F_match = filter(fwd_match, 1-mask_gc.int())
-            # F_final_2, F_match_inv = filter(bwd_match, 1-mask_gc_inv.int())
-
-            # calculate the fundamental matrix based on the flow
             F_final_1, F_match = filter(fwd_match, boundary_mask.int())
             F_final_2, F_match_inv = filter(bwd_match, boundary_mask_inv.int())
 
             K = K_ms.unsqueeze(0).to(device)
             P2 = rt_from_fundamental_mat_nyu(F_final_1.detach().to(device), K, F_match.clone())
             P2_inv = rt_from_fundamental_mat_nyu(F_final_2.detach().to(device), K, F_match_inv.clone())
-
-            # P2 = -P2
-            # P2[0][0,0] = -P2[0][0,0]
-            # P2[0][1,1] = -P2[0][1,1]
-            # P2[0][2,2] = -P2[0][2,2]
-            # P2_inv = -P2_inv
-            # P2_inv[0][0, 0] = -P2_inv[0][0, 0]
-            # P2_inv[0][1, 1] = -P2_inv[0][1, 1]
-            # P2_inv[0][2, 2] = -P2_inv[0][2, 2]
-            # pose_f_gt = np.linalg.inv(pose_ini)@pose_curr
-            # pose_f_gt[:3,3] = pose_f_gt[:3,3]/np.sqrt(pose_f_gt[0,3]**2 + pose_f_gt[1,3]**2 + pose_f_gt[2,3]**2)
-            # pose_f_gt_inv = np.linalg.inv(pose_curr) @ pose_ini
-            # pose_f_gt_inv[:3, 3] = pose_f_gt_inv[:3, 3] / np.sqrt(
-            #     pose_f_gt_inv[0, 3] ** 2 + pose_f_gt_inv[1, 3] ** 2 + pose_f_gt_inv[2, 3] ** 2)
-            # # print('T', pose_f_gt)
-            # # print('P2', P2)
-            # poses_gt.append(pose_f_gt)
-            # print('T', pose_f_gt_inv)
-            # print('P2_inv', P2_inv)
-            #  0.99753665  0.02929729 -0.06374847  0.04940725]
-            #  [-0.03188675  0.99869239 -0.0399922   0.16343834]
-            #  [ 0.06249419  0.04192706  0.99716504 -0.9853156 ]
-            #  [ 0.          0.          0.          1.        ]]
-            # P2_inv tensor([[[ 0.9983,  0.0309, -0.0486, -0.2460],
-            #          [-0.0289,  0.9987, -0.0416,  0.2600],
-            #          [ 0.0498,  0.0402,  0.9979, -0.9338]]]
-            # stop
-            # pose_ini = pose_curr
-            # stop
             F_poses_pool.append(P2)
             F_poses_pool_inv.append(P2_inv)
             tensor_img1 = tensor_img2
@@ -545,34 +254,12 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         generate_training_set(keyframe_pool, K_path, train_transform), batch_size=1, shuffle=False,
         num_workers=4, pin_memory=True)
-    # from datasets.validation_folders import ValidationSet
-    # valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    # val_set = ValidationSet(
-    #     '/home/dokidoki/Datasets/7-Scenes/processing/',
-    #     transform=valid_transform,
-    #     dataset='mav'
-    # )
-    #
-    # val_loader = torch.utils.data.DataLoader(
-    #     val_set, batch_size=args.batch_size, shuffle=False,
-    #     num_workers=args.workers, pin_memory=True)
-    # print(len(keyframe_pool))
-    # print(len(poses_gt))
-    # print(len(gt_depths))
-
-
-    # poses_cat = np.concatenate(poses_gt_write[:-2], axis=0)
-    # txt_filename = Path("/home/dokidoki/Unsupervised_SfM/Unsupervised_VO/SC/SC-SfMLearner/pose_gt.txt")
-    # np.savetxt(txt_filename, poses_cat, delimiter=' ', fmt='%1.8e')
-
-    # stop
-
 
     gt_depths = torch.stack(gt_depths)# n,1,1,256,320
 
     output_depths = online_adaption(pose_net, depth_net, optimizer, optimizer_SGD, train_loader, [F_poses_pool, F_poses_pool_inv], [reproj_matches, reproj_matches_inv], plane_masks)
 
-    # print('**********errors************',compute_errors(gt_depths[:-2]/500, output_depths, 'nyu'))
+    print('**********errors************',compute_errors(gt_depths[:-2]/500, output_depths, 'nyu'))
 
 
 def generate_training_set(keyframes_path, K_path, train_transform):
