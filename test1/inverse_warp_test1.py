@@ -215,10 +215,6 @@ def cam2pixel2(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode):
 
     X_origin = X/Z
     Y_origin = Y/Z
-    # print(pcoords[:, :2].shape)
-    # print(pcoords[:, 2].shape)
-    # print('depth_warped', (pcoords[:, :2]/pcoords[:, 2].unsqueeze(1))[0, :, :5])
-    # stop
 
     # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
     X_norm = 2*(X / Z)/(w-1) - 1

@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-import pdb
 import numpy as np
 
 def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):
